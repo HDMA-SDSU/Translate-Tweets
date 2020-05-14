@@ -5,7 +5,7 @@ from tqdm import tqdm
 from contextlib import redirect_stderr
 import io
 import sys
-
+import numpy as np
 
 @Gooey(program_name="COVID-Crowdfight Translate Twitter Data", progress_regex=r"(\d+)%")
 def parse_args():
@@ -69,6 +69,14 @@ def parse_args():
         default="full_text",
     )
 
+    parser.add_argument(
+        "--outcol",
+        metavar="Output Data Column Name",
+        help="Name of column to place translated data",
+        type=str,
+        default="translated_full_text",
+    )
+
     return parser.parse_args()
 
 
@@ -88,43 +96,27 @@ def deepl_supported_langs():
     return ["EN", "FR", "IT", "JA", "ES", "NL", "PL", "PT", "RU", "ZH"]
 
 
-def translate_dataframe(df, data_column, api_key, src_lang="IT", target_lang="EN"):
-
-    # Add new coloumn for transations
-    df.insert(7, "translated_full_text", "", True)
-
+def translate_series(data,api_key,src_lang="IT",target_lang="EN"):
     # Create empty list
-    my_list = []
+    translated_list = []
 
     # Translate all tweets and add to list
-    # "text" parameter can be an array however there is a limit which is not defined in the documentation
+    # "text" parameter can be an array however there is a limit which is not defined in the documentation    
+    parameters = {
+        "text": data,
+        "source_lang": src_lang,
+        "target_lang": target_lang,
+        "auth_key": api_key,
+    }
+    response = requests.get(
+        "https://api.deepl.com/v2/translate", params=parameters
+    )
+    data = response.json()
+    for item in data.values():
+        for key in item:
+            translated_list.append(key["text"])
 
-    # This is only for showing progress bar
-    progress_bar_output = io.StringIO()
-    with redirect_stderr(progress_bar_output):
-        for tweet in tqdm(df[data_column],file=sys.stdout):
-            parameters = {
-                "text": tweet,
-                "source_lang": src_lang,
-                "target_lang": target_lang,
-                "auth_key": api_key,
-            }
-            response = requests.get(
-                "https://api.deepl.com/v2/translate", params=parameters
-            )
-            data = response.json()
-            for item in data.values():
-                for key in item:
-                    my_list.append(key["text"])
-            print(progress_bar_output.read())
-
-    # Copy list into data frame
-    df["translated_full_text"] = my_list
-
-    # # Pickle dataset
-    # df.to_pickle("city.pkl")
-
-    return df
+    return translated_list
 
 
 if __name__ == "__main__":
@@ -160,13 +152,30 @@ if __name__ == "__main__":
 
     print("Beginning Translation..")
 
-    # Translate data
-    translated_df = translate_dataframe(
-        df, conf.datacol, api_key, conf.srclang, conf.tgtlang
-    )
+    print("Note: Translation is done is chunks of 40 rows")
+
+    # This is only for showing progress bar
+    progress_bar_output = io.StringIO()
+
+    translated_data = []
+    with redirect_stderr(progress_bar_output):
+        chunk_size = 40
+        for _, chunk in tqdm(df.groupby(np.arange(len(df))//chunk_size),file=sys.stdout):
+
+            # Add new data to list
+            translated_data.extend(translate_series(chunk[conf.datacol],api_key,conf.srclang,conf.tgtlang))
+
+            print(progress_bar_output.read())
+
+    df[conf.outcol] = translated_data
+
+    # # Translate data
+    # translated_df = translate_dataframe(
+    #     df, conf.datacol, api_key, conf.srclang, conf.tgtlang
+    # )
 
     # Write to file
-    translated_df.to_excel(conf.outfile)
+    df.to_excel(conf.outfile)
 
     # DONE!
     print(f"Successfully translated, output file at {conf.outfile}")

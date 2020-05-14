@@ -2,12 +2,12 @@ from gooey import Gooey, GooeyParser
 import pandas as pd
 import requests
 from tqdm import tqdm
+from contextlib import redirect_stderr
+import io
+import sys
 
 
-@Gooey(
-    program_name="COVID-Crowdfight Translate Twitter Data",
-    progress_regex=r"(\d+)%"
-)
+@Gooey(program_name="COVID-Crowdfight Translate Twitter Data", progress_regex=r"(\d+)%")
 def parse_args():
     prog_descrip = "Translate Italian Twitter data to English using DeepL"
 
@@ -62,11 +62,11 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--datacol',
-        metavar='Data Column',
+        "--datacol",
+        metavar="Data Column",
         help="Name of column with data to translate",
         type=str,
-        default="full_text"
+        default="full_text",
     )
 
     return parser.parse_args()
@@ -88,7 +88,7 @@ def deepl_supported_langs():
     return ["EN", "FR", "IT", "JA", "ES", "NL", "PL", "PT", "RU", "ZH"]
 
 
-def translate_dataframe(df,data_column,api_key, src_lang="IT", target_lang="EN"):
+def translate_dataframe(df, data_column, api_key, src_lang="IT", target_lang="EN"):
 
     # Add new coloumn for transations
     df.insert(7, "translated_full_text", "", True)
@@ -98,18 +98,25 @@ def translate_dataframe(df,data_column,api_key, src_lang="IT", target_lang="EN")
 
     # Translate all tweets and add to list
     # "text" parameter can be an array however there is a limit which is not defined in the documentation
-    for tweet in tqdm(df[data_column]):
-        parameters = {
-            "text": tweet,
-            "source_lang": src_lang,
-            "target_lang": target_lang,
-            "auth_key": api_key,
-        }
-        response = requests.get("https://api.deepl.com/v2/translate", params=parameters)
-        data = response.json()
-        for item in data.values():
-            for key in item:
-                my_list.append(key["text"])
+
+    # This is only for showing progress bar
+    progress_bar_output = io.StringIO()
+    with redirect_stderr(progress_bar_output):
+        for tweet in tqdm(df[data_column],file=sys.stdout):
+            parameters = {
+                "text": tweet,
+                "source_lang": src_lang,
+                "target_lang": target_lang,
+                "auth_key": api_key,
+            }
+            response = requests.get(
+                "https://api.deepl.com/v2/translate", params=parameters
+            )
+            data = response.json()
+            for item in data.values():
+                for key in item:
+                    my_list.append(key["text"])
+            print(progress_bar_output.read())
 
     # Copy list into data frame
     df["translated_full_text"] = my_list
@@ -131,7 +138,9 @@ if __name__ == "__main__":
 
     # Check output file type
     if conf.outfile[-5:] != ".xlsx":
-        raise ValueError(f"Output file must be .xlsx format, {conf.outfile[-5:]} provided")
+        raise ValueError(
+            f"Output file must be .xlsx format, {conf.outfile[-5:]} provided"
+        )
 
     # Read input data
     if conf.file_type == "csv":
@@ -140,13 +149,21 @@ if __name__ == "__main__":
         df = pd.read_excel(conf.datafile)
     else:
         raise NotImplementedError("File type not supported")
-    
+
     # Check selected column in data source
     if conf.datacol not in df.columns:
-        raise ValueError(f"Data column provided: {conf.datacol} not in source data columns {conf.datafile}")
+        raise ValueError(
+            f"Data column provided: {conf.datacol} not in source data columns {conf.datafile}"
+        )
+
+    print(f"Successfully read data from: {conf.datafile}")
+
+    print("Beginning Translation..")
 
     # Translate data
-    translated_df = translate_dataframe(df,conf.datacol,api_key,conf.srclang,conf.tgtlang)
+    translated_df = translate_dataframe(
+        df, conf.datacol, api_key, conf.srclang, conf.tgtlang
+    )
 
     # Write to file
     translated_df.to_excel(conf.outfile)

@@ -1,5 +1,6 @@
 
 import gooey
+version = "0.1.1"
 gooey_root = os.path.dirname(gooey.__file__)
 gooey_languages = Tree(os.path.join(gooey_root, 'languages'), prefix = 'gooey/languages')
 gooey_images = Tree(os.path.join(gooey_root, 'images'), prefix = 'gooey/images')
@@ -22,7 +23,7 @@ exe = EXE(pyz,
           options,
           gooey_languages, # Add them in to collected files
           gooey_images, # Same here.
-          name='DeepL_Translator',
+          name=f'DeepL_Translator_{version}',
           debug=False,
           strip=None,
           upx=True,

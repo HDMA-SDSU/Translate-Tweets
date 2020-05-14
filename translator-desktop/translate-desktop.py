@@ -6,6 +6,8 @@ from contextlib import redirect_stderr
 import io
 import sys
 import numpy as np
+import json
+
 
 @Gooey(program_name="COVID-Crowdfight Translate Twitter Data", progress_regex=r"(\d+)%")
 def parse_args():
@@ -96,25 +98,30 @@ def deepl_supported_langs():
     return ["EN", "FR", "IT", "JA", "ES", "NL", "PL", "PT", "RU", "ZH"]
 
 
-def translate_series(data,api_key,src_lang="IT",target_lang="EN"):
+def translate_series(data, api_key, src_lang="IT", target_lang="EN"):
     # Create empty list
     translated_list = []
 
-    # Translate all tweets and add to list
-    # "text" parameter can be an array however there is a limit which is not defined in the documentation    
-    parameters = {
-        "text": data,
-        "source_lang": src_lang,
-        "target_lang": target_lang,
-        "auth_key": api_key,
-    }
-    response = requests.get(
-        "https://api.deepl.com/v2/translate", params=parameters
-    )
-    data = response.json()
-    for item in data.values():
-        for key in item:
-            translated_list.append(key["text"])
+    try:
+        # Translate all tweets and add to list
+        # "text" parameter can be an array however there is a limit which is not defined in the documentation
+        parameters = {
+            "text": data,
+            "source_lang": src_lang,
+            "target_lang": target_lang,
+            "auth_key": api_key,
+        }
+        response = requests.get("https://api.deepl.com/v2/translate", params=parameters)
+        deepl_response_data = response.json()
+        for item in deepl_response_data.values():
+            for key in item:
+                translated_list.append(key["text"])
+    except json.decoder.JSONDecodeError:
+        # Insert error for each line in data
+
+        for _ in data:
+            translated_list.append("Error")
+        print(f"Error translating.. `Error` placed in output dataset")
 
     return translated_list
 
@@ -159,11 +166,19 @@ if __name__ == "__main__":
 
     translated_data = []
     with redirect_stderr(progress_bar_output):
+
+        # DeepL supports chunks of 40 items to translate at a time
         chunk_size = 40
-        for _, chunk in tqdm(df.groupby(np.arange(len(df))//chunk_size),file=sys.stdout):
+        for _, chunk in tqdm(
+            df.groupby(np.arange(len(df)) // chunk_size), file=sys.stdout
+        ):
 
             # Add new data to list
-            translated_data.extend(translate_series(chunk[conf.datacol],api_key,conf.srclang,conf.tgtlang))
+            translated_data.extend(
+                translate_series(
+                    chunk[conf.datacol], api_key, conf.srclang, conf.tgtlang
+                )
+            )
 
             print(progress_bar_output.read())
 

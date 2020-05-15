@@ -184,10 +184,7 @@ if __name__ == "__main__":
 
     df[conf.outcol] = translated_data
 
-    # # Translate data
-    # translated_df = translate_dataframe(
-    #     df, conf.datacol, api_key, conf.srclang, conf.tgtlang
-    # )
+    # TODO Reiterate on error rows to try again?
 
     # Write to file
     df.to_excel(conf.outfile)

@@ -1,3 +1,9 @@
+# 0.1.3
+
+- Reduced number of translations per iteration to fit in DeepL's buffer
+- Automatically parse directory of CSV/XLSX
+- Uses 8 threads to improve performance 
+
 # 0.1.2
 
 - Speed improvement with chunk size

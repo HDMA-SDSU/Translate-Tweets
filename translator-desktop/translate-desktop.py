@@ -7,6 +7,8 @@ import io
 import sys
 import numpy as np
 import json
+import os
+from joblib import Parallel, delayed
 
 
 @Gooey(program_name="COVID-Crowdfight Translate Twitter Data", progress_regex=r"(\d+)%")
@@ -16,19 +18,10 @@ def parse_args():
     parser = GooeyParser(description=prog_descrip)
 
     parser.add_argument(
-        "file_type",
-        metavar="File Type",
-        help="Select the source data type (csv/xlsx supported)",
-        widget="Dropdown",
-        choices=["csv", "xlsx"],
-        default="xlsx",
-    )
-
-    parser.add_argument(
-        "datafile",
+        "datadir",
         metavar="Twitter Data",
         help="Select the source twitter data file",
-        widget="FileChooser",
+        widget="DirChooser",
     )
 
     parser.add_argument(
@@ -36,13 +29,6 @@ def parse_args():
         metavar="API Key Text File",
         help="Select the API Key text file",
         widget="FileChooser",
-    )
-
-    parser.add_argument(
-        "outfile",
-        metavar="Output Data",
-        help="Output translated data file (must have .xlsx extension)",
-        widget="FileSaver",
     )
 
     parser.add_argument(
@@ -125,41 +111,27 @@ def translate_series(data, api_key, src_lang="IT", target_lang="EN"):
 
     return translated_list
 
+def translate_file(directory, filename):
+    print(os.path.join(directory, filename))
 
-if __name__ == "__main__":
-    # Initialise GUI
-    conf = parse_args()
-
-    # Read first line in text file for API Key
-    with open(conf.apifile) as f:
-        api_key = f.readline()
-    print(f"API Key Read Successful: {api_key}")
-
-    # Check output file type
-    if conf.outfile[-5:] != ".xlsx":
-        raise ValueError(
-            f"Output file must be .xlsx format, {conf.outfile[-5:]} provided"
-        )
-
-    # Read input data
-    if conf.file_type == "csv":
-        df = pd.read_csv(conf.datafile)
-    elif conf.file_type == "xlsx":
-        df = pd.read_excel(conf.datafile)
+    if filename.endswith(".csv"):
+        df = pd.read_csv(os.path.join(directory, filename))
+    elif filename.endswith(".xlsx"):
+        df = pd.read_excel(os.path.join(directory, filename))
     else:
         raise NotImplementedError("File type not supported")
 
     # Check selected column in data source
     if conf.datacol not in df.columns:
         raise ValueError(
-            f"Data column provided: {conf.datacol} not in source data columns {conf.datafile}"
+            f"Data column provided: {conf.datacol} not in source data columns {filename}"
         )
 
-    print(f"Successfully read data from: {conf.datafile}")
+    print(f"Successfully read data from: {filename}")
 
     print("Beginning Translation..")
 
-    print("Note: Translation is done is chunks of 40 rows")
+    print("Note: Translation is done is chunks of 35 rows")
 
     # This is only for showing progress bar
     progress_bar_output = io.StringIO()
@@ -167,8 +139,8 @@ if __name__ == "__main__":
     translated_data = []
     with redirect_stderr(progress_bar_output):
 
-        # DeepL supports chunks of 40 items to translate at a time
-        chunk_size = 40
+        # DeepL supports chunks of 35 items to translate at a time
+        chunk_size = 35
         for _, chunk in tqdm(
             df.groupby(np.arange(len(df)) // chunk_size), file=sys.stdout
         ):
@@ -184,10 +156,29 @@ if __name__ == "__main__":
 
     df[conf.outcol] = translated_data
 
-    # TODO Reiterate on error rows to try again?
-
     # Write to file
-    df.to_excel(conf.outfile)
+    df.to_excel(os.path.join(translated_dir, filename+".xlsx"))
+    df.to_pickle(os.path.join(translated_dir, filename+".pkl"))
 
     # DONE!
-    print(f"Successfully translated, output file at {conf.outfile}")
+    print(f"Successfully translated, output file at {filename}")
+
+    return
+
+if __name__ == "__main__":
+    # Initialise GUI
+    conf = parse_args()
+
+    # Read first line in text file for API Key
+    with open(conf.apifile) as f:
+        api_key = f.readline()
+    print(f"API Key Read Successful: {api_key}")
+
+    # Read input data
+    directory = conf.datadir
+
+    # Prepare a directory for translated texts
+    translated_dir = os.path.join(directory, "translated")
+    os.mkdir(translated_dir)
+
+    Parallel(n_jobs=8)(delayed(translate_file)(directory, filename) for filename in os.listdir(directory))

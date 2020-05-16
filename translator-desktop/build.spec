@@ -1,12 +1,11 @@
 
 import gooey
-version = "0.1.2"
+version = "0.1.3"
 gooey_root = os.path.dirname(gooey.__file__)
 gooey_languages = Tree(os.path.join(gooey_root, 'languages'), prefix = 'gooey/languages')
 gooey_images = Tree(os.path.join(gooey_root, 'images'), prefix = 'gooey/images')
 
 a = Analysis(['translate-desktop.py'],
-             pathex=['C:\\Users\\jackm\\Documents\\COVID-CrowdFight\\.env'],
              hiddenimports=[],
              hookspath=None,
              runtime_hooks=None,

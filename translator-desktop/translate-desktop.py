@@ -20,7 +20,7 @@ def parse_args():
     parser.add_argument(
         "datadir",
         metavar="Twitter Data",
-        help="Select the source twitter data folder (this will parse all csv & xlsx files)",
+        help="Select the source twitter data folder (this will parse all csv and xlsx files)",
         widget="DirChooser",
     )
 
@@ -63,6 +63,14 @@ def parse_args():
         help="Name of column to place translated data",
         type=str,
         default="translated_full_text",
+    )
+
+    parser.add_argument(
+        "--chunksize",
+        metavar="Chunk Size",
+        help="Number of rows to translate in chunks (change this if you get errors)",
+        type=int,
+        default=35,
     )
 
     return parser.parse_args()
@@ -111,9 +119,9 @@ def translate_series(data, api_key, src_lang="IT", target_lang="EN"):
 
     return translated_list
 
-def translate_file(directory, filename):
+def translate_file(directory, filename,chunk_size):
     # DeepL supports chunks of 35 items to translate at a time
-    chunk_size = 35
+    # chunk_size = 35
 
     print(f"Attempting to read: {os.path.join(directory, filename)}")
 
@@ -188,7 +196,7 @@ if __name__ == "__main__":
         os.mkdir(translated_dir)
 
     for filename in os.listdir(directory):
-        translate_file(directory,filename)
+        translate_file(directory,filename,conf.chunksize)
 
 
     # PyInstaller limitation, cannot implement

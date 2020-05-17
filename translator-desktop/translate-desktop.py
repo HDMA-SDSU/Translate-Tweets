@@ -20,7 +20,7 @@ def parse_args():
     parser.add_argument(
         "datadir",
         metavar="Twitter Data",
-        help="Select the source twitter data file",
+        help="Select the source twitter data folder (this will parse all csv and xlsx files)",
         widget="DirChooser",
     )
 
@@ -63,6 +63,14 @@ def parse_args():
         help="Name of column to place translated data",
         type=str,
         default="translated_full_text",
+    )
+
+    parser.add_argument(
+        "--chunksize",
+        metavar="Chunk Size",
+        help="Number of rows to translate in chunks (change this if you get errors)",
+        type=int,
+        default=35,
     )
 
     return parser.parse_args()
@@ -111,8 +119,11 @@ def translate_series(data, api_key, src_lang="IT", target_lang="EN"):
 
     return translated_list
 
-def translate_file(directory, filename):
-    print(os.path.join(directory, filename))
+def translate_file(directory, filename,chunk_size):
+    # DeepL supports chunks of 35 items to translate at a time
+    # chunk_size = 35
+
+    print(f"Attempting to read: {os.path.join(directory, filename)}")
 
     if filename.endswith(".csv"):
         df = pd.read_csv(os.path.join(directory, filename))
@@ -131,7 +142,7 @@ def translate_file(directory, filename):
 
     print("Beginning Translation..")
 
-    print("Note: Translation is done is chunks of 35 rows")
+    print(f"Note: Translation is done in chunks of {chunk_size} rows")
 
     # This is only for showing progress bar
     progress_bar_output = io.StringIO()
@@ -139,8 +150,7 @@ def translate_file(directory, filename):
     translated_data = []
     with redirect_stderr(progress_bar_output):
 
-        # DeepL supports chunks of 35 items to translate at a time
-        chunk_size = 35
+        
         for _, chunk in tqdm(
             df.groupby(np.arange(len(df)) // chunk_size), file=sys.stdout
         ):
@@ -179,6 +189,17 @@ if __name__ == "__main__":
 
     # Prepare a directory for translated texts
     translated_dir = os.path.join(directory, "translated")
-    os.mkdir(translated_dir)
+    print(f"Output will be found in {translated_dir}")
 
-    Parallel(n_jobs=8)(delayed(translate_file)(directory, filename) for filename in os.listdir(directory))
+    # Create if does not exist
+    if not os.path.exists(translated_dir):
+        os.mkdir(translated_dir)
+
+    for filename in os.listdir(directory):
+        translate_file(directory,filename,conf.chunksize)
+
+
+    # PyInstaller limitation, cannot implement
+    # This creates separate isolated instances of Python and reruns entire file
+    # Creating 8 instances of the GUI, not processing each file
+    # Parallel(n_jobs=8)(delayed(translate_file)(directory, filename) for filename in os.listdir(directory))

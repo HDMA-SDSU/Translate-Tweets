@@ -29,6 +29,7 @@ def parse_args():
         metavar="API Key Text File",
         help="Select the API Key text file",
         widget="FileChooser",
+        # default="C:/Users/norbe/Documents/GitHub/Translate-Tweets/translator-desktop/api.key",
     )
 
     parser.add_argument(
@@ -186,6 +187,7 @@ if __name__ == "__main__":
 
     # Read input data
     directory = conf.datadir
+    files = os.listdir(directory)
 
     # Prepare a directory for translated texts
     translated_dir = os.path.join(directory, "translated")
@@ -195,11 +197,11 @@ if __name__ == "__main__":
     if not os.path.exists(translated_dir):
         os.mkdir(translated_dir)
 
-    for filename in os.listdir(directory):
+    for filename in files:
         translate_file(directory,filename,conf.chunksize)
 
 
     # PyInstaller limitation, cannot implement
     # This creates separate isolated instances of Python and reruns entire file
     # Creating 8 instances of the GUI, not processing each file
-    # Parallel(n_jobs=8)(delayed(translate_file)(directory, filename) for filename in os.listdir(directory))
+    # Parallel(n_jobs=8)(delayed(translate_file)(directory, filename, conf.chunksize) for filename in files)

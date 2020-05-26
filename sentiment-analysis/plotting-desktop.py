@@ -33,7 +33,7 @@ def parse_args():
 
     parser.add_argument(
         "datadir",
-        metavar="Translated Twitter Data",
+        metavar="Cleaned Twitter Data",
         help="Select the source twitter data folder",
         widget="DirChooser",
     )
@@ -62,24 +62,6 @@ def parse_args():
     )
 
     return parser.parse_args()
-
-def remove_links(text):
-    import re
-    return re.sub(r"http\S+", "", text)
-
-def style_text(text:str):
-    return text.lower()
-
-def remove_words(text_data:str,list_of_words_to_remove: typing.List):
-    return [item for item in text_data if item not in list_of_words_to_remove]
-
-def collapse_list_to_string(string_list):
-    return ' '.join(string_list)
-
-def remove_apostrophes(text):
-    text = text.replace("'", "")
-    text = text.replace('"', "")
-    return text
 
 if __name__ == "__main__":
     # Initialise GUI
@@ -137,8 +119,6 @@ if __name__ == "__main__":
     plt.scatter(meanArr["date"], meanArr["anger"], marker = 'o', label='anger', color = '#009900')
     plt.scatter(meanArr["date"], meanArr["joy"], marker = '.', label='joy', color = '#0080FF')
 
-    # for emotion in emotions:
-    #     plt.scatter(meanArr["date"], meanArr[emotion], marker = 'x')
 
     def movingaverage(interval, window_size):
         window = np.ones(int(window_size))/float(window_size)
@@ -151,7 +131,7 @@ if __name__ == "__main__":
     plt.plot(meanArr["date"], x_av_joy, label=f'mov. avg. {conf.mov_avg}D joy', color = '#0080FF')
     plt.plot(meanArr["date"], x_av_anger, label=f'mov. avg. {conf.mov_avg}D anger', color = '#009900')
     plt.legend(loc='upper left')
-    plt.savefig(f"{conf.city_name}_sentiment_fear.png")
+    plt.savefig(os.path.join(directory, f"{conf.city_name}_sentiment_fear.png"))
 
 
     # positive / negative sentiment 
@@ -168,17 +148,18 @@ if __name__ == "__main__":
     x_av_positive = movingaverage(meanArr["positive"], conf.mov_avg)
     x_av_negative = movingaverage(meanArr["negative"], conf.mov_avg)
     plt.plot(meanArr["date"], x_av_positive, label=f'mov. avg. {conf.mov_avg}D positive', color = '#FF8800')
-    plt.plot(meanArr["date"], x_av_negative, label=f'mov. avg. {conf.mov_avg}D negative', color = '#0080FF')
+    plt.plot(meanArr["date"], x_av_negative, label=f'mov. avg. {conf.mov_avg}D negative', color = '#009900')
     plt.legend(loc='upper left')
-    plt.savefig(f"{conf.city_name}_sentiment_posneg.png")
+    plt.savefig(os.path.join(directory, f"{conf.city_name}_sentiment_posneg.png"))
 
+
+    df = pd.concat(files)
+    df.to_pickle(os.path.join(directory, f"{str(conf.city_name)}.pickle"))
 
     print(f"Preparing wordcloud")
 
-    df = pd.concat(files)
-
     wordcloud = WordCloud(width=1920, height=1080).generate(' '.join(df[conf.datacol].astype(str)))
-    wordcloud.to_file(f"{conf.city_name}_wordcloud.png")
+    wordcloud.to_file(os.path.join(directory, f"{conf.city_name}_wordcloud.png"))
 
     # DONE!
     print(f"Success")

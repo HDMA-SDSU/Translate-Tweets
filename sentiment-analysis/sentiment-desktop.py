@@ -48,8 +48,26 @@ def parse_args():
         "--parallel_en",
         metavar="Enable Parallel compute",
         help="Uses multicore processing",
-        type=bool,
+        action = "store_true",
         default=True,
+        widget="CheckBox",
+    )
+
+    parser.add_argument(
+        "--save_pickle",
+        metavar="Save files as pickles",
+        help="Uses raw pandas dataframe format (faster)",
+        action = "store_true",
+        default=True,
+        widget="CheckBox",
+    )
+
+    parser.add_argument(
+        "--save_excel",
+        metavar="Save files as Excel",
+        help="Uses Microsoft Excel file format",
+        action = "store_true",
+        default=False,
         widget="CheckBox",
     )
 
@@ -63,7 +81,7 @@ def parse_args():
 
     parser.add_argument(
         "--datacol",
-        metavar="Output Data Column Name",
+        metavar="Data Column Name",
         help="Name of column where translated data is stored",
         type=str,
         default="translated_full_text",
@@ -148,9 +166,12 @@ def data_processing(directory, df):
         
     date = datetime.datetime.strptime(df['created_at'].min(), '%Y-%m-%d %H:%M:%S').date()
     
-    df.to_pickle(os.path.join(directory, f"{str(date)}.pickle"))
-    df.to_excel(os.path.join(directory, f"{str(date)}.xlsx"))
+    if conf.save_pickle:
+        df.to_pickle(os.path.join(directory, f"{str(date)}.pickle"))
+    if conf.save_excel:
+        df.to_excel(os.path.join(directory, f"{str(date)}.xlsx"))
 
+    print(progress_bar_output.read())
     return
 
 if __name__ == "__main__":
@@ -188,10 +209,8 @@ if __name__ == "__main__":
         if(not conf.parallel_en):
             for df in tqdm(files, file=sys.stdout):
                 data_processing(sentiment_dir,df)
-                print(progress_bar_output.read())
         else:
             Parallel(n_jobs=conf.cpu_cores)(delayed(data_processing)(sentiment_dir, df) for df in tqdm(files, file=sys.stdout))
-            print(progress_bar_output.read())
 
     # DONE!
     print(f"Success")

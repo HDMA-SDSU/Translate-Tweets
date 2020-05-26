@@ -21,12 +21,6 @@ from nltk.tokenize.casual import TweetTokenizer
 import datetime
 import typing
 from joblib import Parallel, delayed
-import matplotlib.pyplot as plt
-from pylab import plot, ylim, xlim, show, xlabel, ylabel, grid
-from numpy import linspace, loadtxt, ones, convolve
-import numpy as np
-from wordcloud import WordCloud
-
 
 stopcorpus: typing.List = stopwords.words('english')
 
@@ -39,7 +33,7 @@ def parse_args():
     parser.add_argument(
         "datadir",
         metavar="Translated Twitter Data",
-        help="Select the source twitter pickled data folder",
+        help="Select the source twitter data folder",
         widget="DirChooser",
     )
 
@@ -48,6 +42,23 @@ def parse_args():
         metavar="City Name",
         help="Name of city to be analysed",
         type=str,
+    )
+
+    parser.add_argument(
+        "--parallel_en",
+        metavar="Enable Parallel compute",
+        help="Uses multicore processing",
+        type=bool,
+        default=True,
+        widget="CheckBox",
+    )
+
+    parser.add_argument(
+        "--cpu_cores",
+        metavar="Number of Cores to use",
+        help="If multicore processing is used, python will spawn multiple instances",
+        type=int,
+        default=8,
     )
 
     parser.add_argument(
@@ -118,9 +129,12 @@ def data_processing(directory, df):
     t = TweetTokenizer()
     emotions = ['anger', 'anticipation', 'disgust', 'fear', 'joy', 'negative', 'positive', 'sadness', 'surprise', 'trust']
 
-    df[conf.datacol] = df[conf.datacol].astype(str).apply(remove_links)
-    df['cleaned_text'] = df[conf.datacol].astype(str).apply(style_text)
-    df['cleaned_text'] = df['cleaned_text'].astype(str).apply(lambda x: remove_words(x.split(),stopcorpus))
+    exclude_words = ["http","https","error","RT", "rt"]
+    exclude_words.extend(stopcorpus)
+
+    df['cleaned_text'] = df[conf.datacol].astype(str).apply(remove_links)
+    df['cleaned_text'] = df['cleaned_text'].astype(str).apply(style_text)
+    df['cleaned_text'] = df['cleaned_text'].astype(str).apply(lambda x: remove_words(x.split(),exclude_words))
     df['cleaned_text'] = df['cleaned_text'].apply(collapse_list_to_string)
     df['cleaned_text'] = df['cleaned_text'].astype(str).apply(remove_apostrophes)
     df['tokenized_sents'] = df.apply(lambda row: t.tokenize(row['cleaned_text']), axis=1)
@@ -149,8 +163,15 @@ if __name__ == "__main__":
     files = []
 
     for file in os.listdir(directory):
-        pkl = os.path.join(directory, file)
-        files.append(pickle.load(open(pkl,'rb')))
+        filename = os.path.join(directory, file)
+        if filename.endswith(".pickle")  or filename.endswith(".pkl"):
+            df = pickle.load(open(filename,'rb'))
+            files.append(df)
+        elif filename.endswith(".xlsx"):
+            df = pd.read_excel(filename)
+            files.append(df)
+        else:
+            raise NotImplementedError("File type not supported")
 
     # Prepare a directory for translated texts
     sentiment_dir = os.path.join(directory, "sentiment")
@@ -164,103 +185,13 @@ if __name__ == "__main__":
     progress_bar_output = io.StringIO()
 
     with redirect_stderr(progress_bar_output):
-        for df in tqdm(files):
-            data_processing(sentiment_dir,df)
+        if(not conf.parallel_en):
+            for df in tqdm(files, file=sys.stdout):
+                data_processing(sentiment_dir,df)
+                print(progress_bar_output.read())
+        else:
+            Parallel(n_jobs=conf.cpu_cores)(delayed(data_processing)(sentiment_dir, df) for df in tqdm(files, file=sys.stdout))
             print(progress_bar_output.read())
-
-        
-        # PyInstaller limitation, cannot implement
-        # This creates separate isolated instances of Python and reruns entire file
-        # Creating 8 instances of the GUI, not processing each file
-        # Parallel(n_jobs=8)(delayed(data_processing)(sentiment_dir, df) for df in tqdm(files))
-        # print(progress_bar_output.read())
-
-    meanArr = {"date":[], 'anger':[], 'anticipation':[], 'disgust':[], 'fear':[], 'joy':[], 'negative':[], 'positive':[], 'sadness':[], 'surprise':[], 'trust':[]}
-
-    files = []
-
-    for file in os.listdir(sentiment_dir):
-        files.append(pickle.load(open(os.path.join(sentiment_dir, file),'rb')))
-
-    for file in files:
-        date = datetime.datetime.strptime(file['created_at'].min(), '%Y-%m-%d %H:%M:%S').date()
-        
-    meanArr["date"].append(date)
-    meanArr["fear"].append(file['fear'].mean()*100)
-    meanArr["anger"].append(file['anger'].mean()*100)
-    meanArr["joy"].append(file['joy'].mean()*100)
-    meanArr["positive"].append(file['positive'].mean())
-    meanArr["negative"].append(file['negative'].mean())
-    meanArr["anticipation"].append(file['anticipation'].mean())
-    meanArr["disgust"].append(file['disgust'].mean())
-    meanArr["sadness"].append(file['sadness'].mean())
-    meanArr["surprise"].append(file['surprise'].mean())
-    meanArr["trust"].append(file['trust'].mean())
-
-    plt.figure(figsize=(20,8))
-    plt.title(f'Change in fear, anger and joy for {conf.city_name}', fontsize=20)
-    plt.xlabel('Date', fontsize=15)
-    plt.ylabel('Sentiment %', fontsize=15)
-    plt.scatter(meanArr["date"], meanArr["fear"], marker = 'x', label='fear', color = '#FF8800')
-    plt.scatter(meanArr["date"], meanArr["anger"], marker = 'o', label='anger', color = '#009900')
-    plt.scatter(meanArr["date"], meanArr["joy"], marker = '.', label='joy', color = '#0080FF')
-
-    # for emotion in emotions:
-    #     plt.scatter(meanArr["date"], meanArr[emotion], marker = 'x')
-
-    def movingaverage(interval, window_size):
-        window = np.ones(int(window_size))/float(window_size)
-        return np.convolve(interval, window, 'same')
-
-    x_av_fear = movingaverage(meanArr["fear"], 3)
-    x_av_joy = movingaverage(meanArr["joy"], 3)
-    x_av_anger = movingaverage(meanArr["anger"], 3)
-    plt.plot(meanArr["date"], x_av_fear, label='mov. avg. 3D fear', color = '#FF8800')
-    plt.plot(meanArr["date"], x_av_joy, label='mov. avg. 3D joy', color = '#0080FF')
-    plt.plot(meanArr["date"], x_av_anger, label='mov. avg. 3D anger', color = '#009900')
-    plt.legend(loc='upper left')
-    plt.savefig(f"{conf.city_name}_sentiment_fear.png")
-
-
-    # positive / negative sentiment 
-    plt.figure(figsize=(20,8))
-    plt.title(f'Change in positive and negative sentiment for {conf.city_name}', fontsize=20)
-    plt.xlabel('Date', fontsize=15)
-    plt.ylabel('Sentiment %', fontsize=15)
-    plt.scatter(meanArr["date"], meanArr["positive"], marker = 'x', label='positive', color = '#FF8800')
-    plt.scatter(meanArr["date"], meanArr["negative"], marker = 'o', label='negative', color = '#009900')
-
-    # for emotion in emotions:
-    #     plt.scatter(meanArr["date"], meanArr[emotion], marker = 'x')
-
-    x_av_positive = movingaverage(meanArr["positive"], 3)
-    x_av_negative = movingaverage(meanArr["negative"], 3)
-    plt.plot(meanArr["date"], x_av_positive, label='mov. avg. 3D positive', color = '#FF8800')
-    plt.plot(meanArr["date"], x_av_negative, label='mov. avg. 3D negative', color = '#0080FF')
-    plt.legend(loc='upper left')
-    plt.savefig(f"{conf.city_name}_sentiment_posneg.png")
-
-
-    exclude_words = ["http","https","error","RT", "rt"]
-
-    exclude_words.extend(stopcorpus)
-
-    df = pd.concat(files)
-
-    df['wordcloud'] = df['translated_full_text'].astype(str).apply(remove_links)
-
-    df['wordcloud'] = df['wordcloud'].astype(str).apply(lambda x: x.lower())
-
-    df['wordcloud'] = df['wordcloud'].astype(str).apply(remove_apostrophes)
-
-    df['wordcloud'] = df['wordcloud'].astype(str).apply(lambda x: remove_words(x.split(),exclude_words))
-
-    df['wordcloud'] = df['wordcloud'].apply(lambda x: ' '.join(x))
-
-    # display(output_df['wordcloud'])
-
-    wordcloud = WordCloud(width=1920, height=1080).generate(' '.join(df['wordcloud'].astype(str)))
-    wordcloud.to_file(f"{conf.city_name}_wordcloud.png")
 
     # DONE!
     print(f"Success")

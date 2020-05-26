@@ -94,42 +94,41 @@ if __name__ == "__main__":
 
     print(f"Data loaded")
 
-    for file in files:
-        date = datetime.datetime.strptime(file['created_at'].min(), '%Y-%m-%d %H:%M:%S').date()
-        
-        meanArr["date"].append(date)
-        meanArr["fear"].append(file['fear'].mean()*100)
-        meanArr["anger"].append(file['anger'].mean()*100)
-        meanArr["joy"].append(file['joy'].mean()*100)
-        meanArr["positive"].append(file['positive'].mean()*100)
-        meanArr["negative"].append(file['negative'].mean()*100)
-        meanArr["anticipation"].append(file['anticipation'].mean()*100)
-        meanArr["disgust"].append(file['disgust'].mean()*100)
-        meanArr["sadness"].append(file['sadness'].mean()*100)
-        meanArr["surprise"].append(file['surprise'].mean()*100)
-        meanArr["trust"].append(file['trust'].mean()*100)
-        
+    df = pd.concat(files)
+    df.to_pickle(os.path.join(directory, f"{str(conf.city_name)}.pickle"))
+
+    df['Datetime'] = pd.to_datetime(df['created_at'])
+    df = df.set_index(['Datetime'])
+    fig, ax = plt.subplots(figsize=(100,30))
+    sns.set(font_scale=1) 
+    sns_plot = sns.boxplot(df.index.dayofyear, df.fear*100, ax=ax, showfliers = False)
+    fig = sns_plot.get_figure()
+    fig.savefig(os.path.join(directory, f"{conf.city_name}_sentiment_fear_box.png"))
+
+
     print(f"Preparing plots")
 
     plt.figure(figsize=(20,8))
     plt.title(f'Change in fear, anger and joy for {conf.city_name}', fontsize=20)
     plt.xlabel('Date', fontsize=15)
     plt.ylabel('Sentiment %', fontsize=15)
-    plt.scatter(meanArr["date"], meanArr["fear"], marker = 'x', label='fear', color = '#FF8800')
-    plt.scatter(meanArr["date"], meanArr["anger"], marker = 'o', label='anger', color = '#009900')
-    plt.scatter(meanArr["date"], meanArr["joy"], marker = '.', label='joy', color = '#0080FF')
-
+    fear_avg = df.fear.resample('D').mean()*100
+    anger_avg = df.anger.resample('D').mean()*100
+    joy_avg = df.joy.resample('D').mean()*100
+    plt.scatter(fear_avg.index, fear_avg, marker = 'x', label='fear', color = '#FF8800')
+    plt.scatter(anger_avg.index, anger_avg, marker = 'o', label='anger', color = '#009900')
+    plt.scatter(joy_avg.index, joy_avg, marker = '.', label='joy', color = '#0080FF')
 
     def movingaverage(interval, window_size):
         window = np.ones(int(window_size))/float(window_size)
         return np.convolve(interval, window, 'same')
 
-    x_av_fear = movingaverage(meanArr["fear"], conf.mov_avg)
-    x_av_joy = movingaverage(meanArr["joy"], conf.mov_avg)
-    x_av_anger = movingaverage(meanArr["anger"], conf.mov_avg)
-    plt.plot(meanArr["date"], x_av_fear, label=f'mov. avg. {conf.mov_avg}D fear', color = '#FF8800')
-    plt.plot(meanArr["date"], x_av_joy, label=f'mov. avg. {conf.mov_avg}D joy', color = '#0080FF')
-    plt.plot(meanArr["date"], x_av_anger, label=f'mov. avg. {conf.mov_avg}D anger', color = '#009900')
+    x_av_fear = movingaverage(fear_avg, conf.mov_avg)
+    x_av_joy = movingaverage(joy_avg, conf.mov_avg)
+    x_av_anger = movingaverage(anger_avg, conf.mov_avg)
+    plt.plot(fear_avg.index, x_av_fear, label=f'mov. avg. {conf.mov_avg}D fear', color = '#FF8800')
+    plt.plot(joy_avg.index, x_av_joy, label=f'mov. avg. {conf.mov_avg}D joy', color = '#0080FF')
+    plt.plot(anger_avg.index, x_av_anger, label=f'mov. avg. {conf.mov_avg}D anger', color = '#009900')
     plt.legend(loc='upper left')
     plt.savefig(os.path.join(directory, f"{conf.city_name}_sentiment_fear.png"))
 
@@ -139,22 +138,17 @@ if __name__ == "__main__":
     plt.title(f'Change in positive and negative sentiment for {conf.city_name}', fontsize=20)
     plt.xlabel('Date', fontsize=15)
     plt.ylabel('Sentiment %', fontsize=15)
-    plt.scatter(meanArr["date"], meanArr["positive"], marker = 'x', label='positive', color = '#FF8800')
-    plt.scatter(meanArr["date"], meanArr["negative"], marker = 'o', label='negative', color = '#009900')
+    pos_avg = df.positive.resample('D').mean()*100
+    neg_avg = df.negative.resample('D').mean()*100
+    plt.scatter(pos_avg.index, pos_avg, marker = 'x', label='positive', color = '#FF8800')
+    plt.scatter(neg_avg.index, neg_avg, marker = 'o', label='negative', color = '#009900')
 
-    # for emotion in emotions:
-    #     plt.scatter(meanArr["date"], meanArr[emotion], marker = 'x')
-
-    x_av_positive = movingaverage(meanArr["positive"], conf.mov_avg)
-    x_av_negative = movingaverage(meanArr["negative"], conf.mov_avg)
-    plt.plot(meanArr["date"], x_av_positive, label=f'mov. avg. {conf.mov_avg}D positive', color = '#FF8800')
-    plt.plot(meanArr["date"], x_av_negative, label=f'mov. avg. {conf.mov_avg}D negative', color = '#009900')
+    x_av_positive = movingaverage(pos_avg, conf.mov_avg)
+    x_av_negative = movingaverage(neg_avg, conf.mov_avg)
+    plt.plot(pos_avg.index, x_av_positive, label=f'mov. avg. {conf.mov_avg}D positive', color = '#FF8800')
+    plt.plot(neg_avg.index, x_av_negative, label=f'mov. avg. {conf.mov_avg}D negative', color = '#009900')
     plt.legend(loc='upper left')
     plt.savefig(os.path.join(directory, f"{conf.city_name}_sentiment_posneg.png"))
-
-
-    df = pd.concat(files)
-    df.to_pickle(os.path.join(directory, f"{str(conf.city_name)}.pickle"))
 
     print(f"Preparing wordcloud")
 

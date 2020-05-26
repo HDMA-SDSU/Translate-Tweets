@@ -74,6 +74,42 @@ def parse_args():
         default=35,
     )
 
+    parser.add_argument(
+        "--parallel_en",
+        metavar="Enable Parallel compute",
+        help="Uses multicore processing",
+        action = "store_true",
+        default=True,
+        widget="CheckBox",
+    )
+
+    parser.add_argument(
+        "--cpu_cores",
+        metavar="Number of Cores to use",
+        help="If multicore processing is used, python will spawn multiple instances",
+        type=int,
+        default=8,
+    )
+
+    parser.add_argument(
+        "--save_pickle",
+        metavar="Save files as pickles",
+        help="Uses raw pandas dataframe format (faster)",
+        action = "store_true",
+        default=True,
+        widget="CheckBox",
+    )
+
+    parser.add_argument(
+        "--save_excel",
+        metavar="Save files as Excel",
+        help="Uses Microsoft Excel file format",
+        action = "store_true",
+        default=False,
+        widget="CheckBox",
+    )
+
+
     return parser.parse_args()
 
 
@@ -168,8 +204,10 @@ def translate_file(directory, filename,chunk_size):
     df[conf.outcol] = translated_data
 
     # Write to file
-    df.to_excel(os.path.join(translated_dir, filename+".xlsx"))
-    df.to_pickle(os.path.join(translated_dir, filename+".pkl"))
+    if conf.save_pickle:
+        df.to_pickle(os.path.join(translated_dir, f"{filename}.pickle"))
+    if conf.save_excel:
+        df.to_excel(os.path.join(translated_dir, f"{filename}.xlsx"))
 
     # DONE!
     print(f"Successfully translated, output file at {filename}")
@@ -197,11 +235,8 @@ if __name__ == "__main__":
     if not os.path.exists(translated_dir):
         os.mkdir(translated_dir)
 
-    for filename in files:
-        translate_file(directory,filename,conf.chunksize)
-
-
-    # PyInstaller limitation, cannot implement
-    # This creates separate isolated instances of Python and reruns entire file
-    # Creating 8 instances of the GUI, not processing each file
-    # Parallel(n_jobs=8)(delayed(translate_file)(directory, filename, conf.chunksize) for filename in files)
+    if(not conf.parallel_en):
+        for filename in files:
+            translate_file(directory,filename,conf.chunksize)
+    else:
+        Parallel(n_jobs=conf.cpu_cores)(delayed(translate_file)(directory, filename, conf.chunksize) for filename in files)

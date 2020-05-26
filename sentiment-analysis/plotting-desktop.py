@@ -11,8 +11,6 @@ import pickle
 import pandas as pd
 from collections import Counter
 import seaborn as sns
-import nltk
-from nltk.corpus import stopwords
 from tqdm import tqdm as tqdm
 from tqdm import trange
 import datetime
@@ -23,9 +21,9 @@ from pylab import plot, ylim, xlim, show, xlabel, ylabel, grid
 from numpy import linspace, loadtxt, ones, convolve
 import numpy as np
 from wordcloud import WordCloud
+from tqdm import tqdm as tqdm
+from tqdm import trange
 
-
-stopcorpus: typing.List = stopwords.words('english')
 
 @Gooey(program_name="COVID-Crowdfight Sentiment Analysis", progress_regex=r"(\d+)%")
 def parse_args():
@@ -36,7 +34,7 @@ def parse_args():
     parser.add_argument(
         "datadir",
         metavar="Translated Twitter Data",
-        help="Select the source twitter pickled data folder",
+        help="Select the source twitter data folder",
         widget="DirChooser",
     )
 
@@ -49,10 +47,10 @@ def parse_args():
 
     parser.add_argument(
         "--datacol",
-        metavar="Output Data Column Name",
-        help="Name of column where translated data is stored",
+        metavar="Data Column Name",
+        help="Name of column where cleaned data is stored",
         type=str,
-        default="translated_full_text",
+        default="cleaned_text",
     )
 
     parser.add_argument(
@@ -94,23 +92,42 @@ if __name__ == "__main__":
 
     files = []
 
-    for file in os.listdir(directory):
-        files.append(pickle.load(open(os.path.join(directory, file),'rb')))
+    # This is only for showing progress bar
+    progress_bar_output = io.StringIO()
+
+    print(f"Loading data")
+
+    with redirect_stderr(progress_bar_output):
+        for file in tqdm(os.listdir(directory), file=sys.stdout):
+            filename = os.path.join(directory, file)
+            if filename.endswith(".pickle") or filename.endswith(".pkl"):
+                df = pickle.load(open(filename,'rb'))
+                files.append(df)
+            elif filename.endswith(".xlsx"):
+                df = pd.read_excel(filename)
+                files.append(df)
+            else:
+                raise NotImplementedError("File type not supported")
+            print(progress_bar_output.read())
+
+    print(f"Data loaded")
 
     for file in files:
         date = datetime.datetime.strptime(file['created_at'].min(), '%Y-%m-%d %H:%M:%S').date()
         
-    meanArr["date"].append(date)
-    meanArr["fear"].append(file['fear'].mean()*100)
-    meanArr["anger"].append(file['anger'].mean()*100)
-    meanArr["joy"].append(file['joy'].mean()*100)
-    meanArr["positive"].append(file['positive'].mean()*100)
-    meanArr["negative"].append(file['negative'].mean()*100)
-    meanArr["anticipation"].append(file['anticipation'].mean()*100)
-    meanArr["disgust"].append(file['disgust'].mean()*100)
-    meanArr["sadness"].append(file['sadness'].mean()*100)
-    meanArr["surprise"].append(file['surprise'].mean()*100)
-    meanArr["trust"].append(file['trust'].mean()*100)
+        meanArr["date"].append(date)
+        meanArr["fear"].append(file['fear'].mean()*100)
+        meanArr["anger"].append(file['anger'].mean()*100)
+        meanArr["joy"].append(file['joy'].mean()*100)
+        meanArr["positive"].append(file['positive'].mean()*100)
+        meanArr["negative"].append(file['negative'].mean()*100)
+        meanArr["anticipation"].append(file['anticipation'].mean()*100)
+        meanArr["disgust"].append(file['disgust'].mean()*100)
+        meanArr["sadness"].append(file['sadness'].mean()*100)
+        meanArr["surprise"].append(file['surprise'].mean()*100)
+        meanArr["trust"].append(file['trust'].mean()*100)
+        
+    print(f"Preparing plots")
 
     plt.figure(figsize=(20,8))
     plt.title(f'Change in fear, anger and joy for {conf.city_name}', fontsize=20)
@@ -130,9 +147,9 @@ if __name__ == "__main__":
     x_av_fear = movingaverage(meanArr["fear"], conf.mov_avg)
     x_av_joy = movingaverage(meanArr["joy"], conf.mov_avg)
     x_av_anger = movingaverage(meanArr["anger"], conf.mov_avg)
-    plt.plot(meanArr["date"], x_av_fear, label='mov. avg. 3D fear', color = '#FF8800')
-    plt.plot(meanArr["date"], x_av_joy, label='mov. avg. 3D joy', color = '#0080FF')
-    plt.plot(meanArr["date"], x_av_anger, label='mov. avg. 3D anger', color = '#009900')
+    plt.plot(meanArr["date"], x_av_fear, label=f'mov. avg. {conf.mov_avg}D fear', color = '#FF8800')
+    plt.plot(meanArr["date"], x_av_joy, label=f'mov. avg. {conf.mov_avg}D joy', color = '#0080FF')
+    plt.plot(meanArr["date"], x_av_anger, label=f'mov. avg. {conf.mov_avg}D anger', color = '#009900')
     plt.legend(loc='upper left')
     plt.savefig(f"{conf.city_name}_sentiment_fear.png")
 
@@ -150,31 +167,17 @@ if __name__ == "__main__":
 
     x_av_positive = movingaverage(meanArr["positive"], conf.mov_avg)
     x_av_negative = movingaverage(meanArr["negative"], conf.mov_avg)
-    plt.plot(meanArr["date"], x_av_positive, label='mov. avg. 3D positive', color = '#FF8800')
-    plt.plot(meanArr["date"], x_av_negative, label='mov. avg. 3D negative', color = '#0080FF')
+    plt.plot(meanArr["date"], x_av_positive, label=f'mov. avg. {conf.mov_avg}D positive', color = '#FF8800')
+    plt.plot(meanArr["date"], x_av_negative, label=f'mov. avg. {conf.mov_avg}D negative', color = '#0080FF')
     plt.legend(loc='upper left')
     plt.savefig(f"{conf.city_name}_sentiment_posneg.png")
 
 
-    exclude_words = ["http","https","error","RT", "rt"]
-
-    exclude_words.extend(stopcorpus)
+    print(f"Preparing wordcloud")
 
     df = pd.concat(files)
 
-    df['wordcloud'] = df['translated_full_text'].astype(str).apply(remove_links)
-
-    df['wordcloud'] = df['wordcloud'].astype(str).apply(lambda x: x.lower())
-
-    df['wordcloud'] = df['wordcloud'].astype(str).apply(remove_apostrophes)
-
-    df['wordcloud'] = df['wordcloud'].astype(str).apply(lambda x: remove_words(x.split(),exclude_words))
-
-    df['wordcloud'] = df['wordcloud'].apply(lambda x: ' '.join(x))
-
-    # display(output_df['wordcloud'])
-
-    wordcloud = WordCloud(width=1920, height=1080).generate(' '.join(df['wordcloud'].astype(str)))
+    wordcloud = WordCloud(width=1920, height=1080).generate(' '.join(df[conf.datacol].astype(str)))
     wordcloud.to_file(f"{conf.city_name}_wordcloud.png")
 
     # DONE!

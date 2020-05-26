@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument(
         "datadir",
         metavar="Translated Twitter Data",
-        help="Select the source twitter pickled data folder",
+        help="Select the source twitter data folder",
         widget="DirChooser",
     )
 
@@ -42,6 +42,23 @@ def parse_args():
         metavar="City Name",
         help="Name of city to be analysed",
         type=str,
+    )
+
+    parser.add_argument(
+        "--parallel_en",
+        metavar="Enable Parallel compute",
+        help="Uses multicore processing",
+        type=bool,
+        default=True,
+        widget="CheckBox",
+    )
+
+    parser.add_argument(
+        "--cpu_cores",
+        metavar="Number of Cores to use",
+        help="If multicore processing is used, python will spawn multiple instances",
+        type=int,
+        default=8,
     )
 
     parser.add_argument(
@@ -112,9 +129,12 @@ def data_processing(directory, df):
     t = TweetTokenizer()
     emotions = ['anger', 'anticipation', 'disgust', 'fear', 'joy', 'negative', 'positive', 'sadness', 'surprise', 'trust']
 
-    df[conf.datacol] = df[conf.datacol].astype(str).apply(remove_links)
-    df['cleaned_text'] = df[conf.datacol].astype(str).apply(style_text)
-    df['cleaned_text'] = df['cleaned_text'].astype(str).apply(lambda x: remove_words(x.split(),stopcorpus))
+    exclude_words = ["http","https","error","RT", "rt"]
+    exclude_words.extend(stopcorpus)
+
+    df['cleaned_text'] = df[conf.datacol].astype(str).apply(remove_links)
+    df['cleaned_text'] = df['cleaned_text'].astype(str).apply(style_text)
+    df['cleaned_text'] = df['cleaned_text'].astype(str).apply(lambda x: remove_words(x.split(),exclude_words))
     df['cleaned_text'] = df['cleaned_text'].apply(collapse_list_to_string)
     df['cleaned_text'] = df['cleaned_text'].astype(str).apply(remove_apostrophes)
     df['tokenized_sents'] = df.apply(lambda row: t.tokenize(row['cleaned_text']), axis=1)
@@ -143,8 +163,15 @@ if __name__ == "__main__":
     files = []
 
     for file in os.listdir(directory):
-        pkl = os.path.join(directory, file)
-        files.append(pickle.load(open(pkl,'rb')))
+        filename = os.path.join(directory, file)
+        if filename.endswith(".pickle")  or filename.endswith(".pkl"):
+            df = pickle.load(open(filename,'rb'))
+            files.append(df)
+        elif filename.endswith(".xlsx"):
+            df = pd.read_excel(filename)
+            files.append(df)
+        else:
+            raise NotImplementedError("File type not supported")
 
     # Prepare a directory for translated texts
     sentiment_dir = os.path.join(directory, "sentiment")
@@ -158,16 +185,13 @@ if __name__ == "__main__":
     progress_bar_output = io.StringIO()
 
     with redirect_stderr(progress_bar_output):
-        for df in tqdm(files):
-            data_processing(sentiment_dir,df)
+        if(not conf.parallel_en):
+            for df in tqdm(files, file=sys.stdout):
+                data_processing(sentiment_dir,df)
+                print(progress_bar_output.read())
+        else:
+            Parallel(n_jobs=conf.cpu_cores)(delayed(data_processing)(sentiment_dir, df) for df in tqdm(files, file=sys.stdout))
             print(progress_bar_output.read())
-
-        
-        # PyInstaller limitation, cannot implement
-        # This creates separate isolated instances of Python and reruns entire file
-        # Creating 8 instances of the GUI, not processing each file
-        # Parallel(n_jobs=8)(delayed(data_processing)(sentiment_dir, df) for df in tqdm(files))
-        # print(progress_bar_output.read())
 
     # DONE!
     print(f"Success")

@@ -10,6 +10,8 @@ import matplotlib.dates as mdates
 from gooey import Gooey, GooeyParser
 import io
 import sys
+from PIL import Image
+
 
 cities = [ {'city': "Bari", "italian": "Bari", 'region': "Puglia"}, 
            {'city': "Bologna", "italian": "Bologna", 'region': "Emilia-Romagna"},
@@ -59,7 +61,7 @@ def parse_args():
 
     return parser.parse_args()
 
-sentiments = ["fear", "anger", "joy"]
+sentiments = [{"sent":"fear", "c":"#ff5733"}, {"sent":"anger", "c":"#5ba15f"}, {"sent":"joy", "c":"#59A5D8"}]
 
 def movingaverage(interval, window_size):
         window = np.ones(int(window_size))/float(window_size)
@@ -133,40 +135,51 @@ if __name__ == "__main__":
             dead['DateTime'] = pd.to_datetime(dead['data'])
             dead = dead.set_index(['DateTime'])
 
+            # for sentiment in sentiments:
+            color = 'black'
+            fig, ax1 = plt.subplots(figsize=(30,15))
+            plt.plot(dead.index, dead.Death, color = color,label=f'Daily Covid Deaths in the {city["region"]} region', alpha=0.6)
+            plt.fill_between(dead.index, dead.Death, color = "#FFD300", alpha=0.6)
+            plt.bar(citta.index, citta.Delta, color = "grey", alpha=0.6,label=f'Daily Covid Cases in {city["city"]}')
+
+            ax1.set_xlabel('Date', size=15)
+            ax1.set_ylabel('Daily Covid Cases & Deaths', color="black", size=15) 
+            start, end = ax1.get_xlim()
+            ax1.xaxis.set_ticks(np.arange(start, end, 0.1))
+            ax1.tick_params(axis='y', labelcolor="black", labelsize=14)
+            ax1.tick_params(axis='x', labelcolor="black", labelsize=14)
+            ax1.set_ylim(bottom=0)
+
+            weekend_indices = find_weekend_indices(citta.index)
+            highlight_datetimes(weekend_indices, ax1, citta)
+            
+            # color = 'tab:red'
+            ax2 = plt.twinx()
+            
             for sentiment in sentiments:
-                color = 'tab:blue'
-                fig, ax1 = plt.subplots(figsize=(30,15))
-                plt.bar(citta.index, citta.Delta, color = color, alpha=0.6,label=f'Daily new COVID-19 cases')
-                plt.plot(dead.index, dead.Death, color = "black",label=f'Daily fatalities for the {city["region"]} region', alpha=0.6)
-                plt.fill_between(dead.index, dead.Death, color = "black", alpha=0.6)
-                ax1.set_xlabel('Date', size=13)
-                ax1.set_ylabel('Dailty new COVID-19 cases', color=color, size=13) 
-                start, end = ax1.get_xlim()
-                ax1.xaxis.set_ticks(np.arange(start, end, 0.1))
-                ax1.tick_params(axis='y', labelcolor=color, size=13)
-
-                weekend_indices = find_weekend_indices(citta.index)
-                highlight_datetimes(weekend_indices, ax1, citta)
-                
-                color = 'tab:red'
-                mean = df[sentiment].resample('D').mean()*100
-                ax2 = plt.twinx() 
-                ax2.scatter(mean.index, mean, marker = '.', color = color)
+                mean = df[sentiment['sent']].resample('D').mean()*100
+                ax2.scatter(mean.index, mean, marker = '.', color = sentiment['c'])
                 x_av = movingaverage(mean, 1)
-                ax2.plot(mean.index, x_av, color = color, label=f'{sentiment}')
-                ax2.set_ylabel(f'{sentiment} (%)', color=color, size=13) 
-                ax2.tick_params(axis='y', labelcolor=color)
-                
-                bbox_props = dict(boxstyle="round", fc="white", alpha=0.8)
+                ax2.plot(mean.index, x_av, color = sentiment['c'], label=f"{sentiment['sent']} tweets")
+            
+            ax2.set_ylabel(f'Tweet Sentiment in (%)', color="black", size=15) 
+            ax2.tick_params(axis='y', labelcolor="black", labelsize=14)
+            ax2.set_ylim(bottom=0)
+            
+            bbox_props = dict(boxstyle="round", fc="white", alpha=0.8)
 
-                annotations_file = f"{conf.datadir}/{city['city']}.xlsx"
-                a_file = pd.read_excel(open(annotations_file,'rb'))
+            annotations_file = f"{conf.datadir}/{city['city']}.xlsx"
+            a_file = pd.read_excel(open(annotations_file,'rb'))
 
-                for date, row in a_file.iterrows():
-                    ax2.annotate(row.Policy, (mdates.date2num(row.Date), mean[row.Date]), xytext=(row.X, row.Y), 
-                                bbox=bbox_props, size=row.Size,textcoords='offset points', arrowprops=dict(arrowstyle='-|>'))
-                
-                ax1.legend(prop={'size': 12}, loc='upper right')
-                ax1.set_title(label=f'Visualizing the effects of {sentiment} in {city["city"]} during the time of COVID-19', size=15)
-                fig.savefig(f"{conf.datadir}/{city['city']}/{city['city']}_{sentiment}.png")
-                plt.close(fig)
+            for date, row in a_file.iterrows():
+                ax2.annotate(row.Policy, (mdates.date2num(row.Date), mean[row.Date]), xytext=(row.X, row.Y), 
+                            bbox=bbox_props, size=row.Size,textcoords='offset points', arrowprops=dict(arrowstyle='-|>'))
+            
+            ax1.legend(prop={'size': 15}, loc='upper left')
+            ax2.legend(prop={'size': 15}, loc='upper right')
+            ax1.set_title(label=f'Visualizing tweet sentiment in {city["city"]} during the time of COVID-19', size=21)
+            fig.tight_layout()
+            fig.savefig(f"{conf.datadir}/{city['city']}/{city['city']}.png", dpi=150)
+            image = Image.open(f"{conf.datadir}/{city['city']}/{city['city']}.png")
+            image.show()
+            plt.close(fig)
